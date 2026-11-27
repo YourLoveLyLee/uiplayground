@@ -1,0 +1,20 @@
+[package]
+name = "studioui"
+version = "1.0.0"
+description = "Art Studio and UI Workshop Desktop Suite"
+authors = ["StudioUI Creator"]
+edition = "2021"
+
+[lib]
+name = "studioui_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2.0", features = [] }
+tauri-plugin-dialog = "2.0"
+tauri-plugin-fs = "2.0"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }

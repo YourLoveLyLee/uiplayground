@@ -1,0 +1,6 @@
+{
+  "name": "Roblox UI Playground",
+  "description": "A visual UI design, interaction, and prototyping editor for creating Roblox game interfaces, states, event flows, sprite atlases, and Roblox Studio exports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

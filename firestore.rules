@@ -1,0 +1,300 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserProfile(data) {
+      return data.uid is string
+        && data.uid == request.auth.uid
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 200
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUIProject(data) {
+      return data.id is string
+        && isValidId(data.id)
+        && data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && data.version is string
+        && data.version.size() >= 1
+        && data.version.size() <= 32
+        && data.activeScreenId is string
+        && data.activeScreenId.size() >= 1
+        && data.activeScreenId.size() <= 128
+        && data.screens is list
+        && data.screens.size() >= 1
+        && data.screens.size() <= 30
+        && data.library is list
+        && data.library.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidArtDocument(data) {
+      return data.id is string
+        && isValidId(data.id)
+        && data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 120
+        && data.width is number
+        && data.width >= 16
+        && data.width <= 8192
+        && data.height is number
+        && data.height >= 16
+        && data.height <= 8192
+        && data.dpi is number
+        && data.dpi >= 72
+        && data.dpi <= 600
+        && data.backgroundColor is string
+        && data.backgroundColor.size() >= 4
+        && data.backgroundColor.size() <= 32
+        && data.layers is list
+        && data.layers.size() <= 64
+        && (!('palettes' in data) || (data.palettes is list && data.palettes.size() <= 40))
+        && (!('previewDataUrl' in data) || (data.previewDataUrl is string && data.previewDataUrl.size() <= 400000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSharedAsset(data) {
+      return data.id is string
+        && isValidId(data.id)
+        && data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 120
+        && data.sourceApp is string
+        && data.sourceApp in ['art_studio', 'ui_workshop', 'imported']
+        && data.mimeType is string
+        && data.mimeType.size() >= 3
+        && data.mimeType.size() <= 64
+        && data.dataUrl is string
+        && data.dataUrl.size() <= 500000
+        && data.width is number
+        && data.width >= 1
+        && data.width <= 8192
+        && data.height is number
+        && data.height >= 1
+        && data.height <= 8192
+        && data.isAtlas is bool
+        && data.sprites is list
+        && data.sprites.size() <= 256
+        && (!('robloxAssetId' in data) || (data.robloxAssetId is string && data.robloxAssetId.size() <= 64))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBrushPack(data) {
+      return data.id is string
+        && isValidId(data.id)
+        && data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && data.folder is string
+        && data.folder.size() >= 1
+        && data.folder.size() <= 64
+        && data.formatVersion is string
+        && data.formatVersion.size() >= 1
+        && data.formatVersion.size() <= 16
+        && data.brushes is list
+        && data.brushes.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTutorialProgress(data) {
+      return data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.completedLessonIds is list
+        && data.completedLessonIds.size() <= 50
+        && (data.completedLessonIds.size() == 0 || (data.completedLessonIds[0] is string && data.completedLessonIds[0].size() <= 64))
+        && data.updatedAt is timestamp;
+    }
+
+    // Users collection (PII isolated to owner)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // UI Workshop Projects
+    match /ui_projects/{projectId} {
+      allow get: if isSignedIn() && isValidId(projectId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(projectId)
+        && incoming().id == projectId
+        && isValidUIProject(incoming())
+        && incoming().keys().hasAll(['id', 'ownerId', 'name', 'version', 'activeScreenId', 'screens', 'library', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['id', 'ownerId', 'name', 'version', 'activeScreenId', 'screens', 'library', 'createdAt', 'updatedAt'])
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(projectId)
+        && existing().ownerId == request.auth.uid
+        && isValidUIProject(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'version', 'activeScreenId', 'screens', 'library', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(projectId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Art Studio Documents
+    match /art_documents/{docId} {
+      allow get: if isSignedIn() && isValidId(docId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(docId)
+        && incoming().id == docId
+        && isValidArtDocument(incoming())
+        && incoming().keys().hasAll(['id', 'ownerId', 'title', 'width', 'height', 'dpi', 'backgroundColor', 'layers', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['id', 'ownerId', 'title', 'width', 'height', 'dpi', 'backgroundColor', 'layers', 'palettes', 'previewDataUrl', 'createdAt', 'updatedAt'])
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(docId)
+        && existing().ownerId == request.auth.uid
+        && isValidArtDocument(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'width', 'height', 'dpi', 'backgroundColor', 'layers', 'palettes', 'previewDataUrl', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(docId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Shared Assets & Sprite Atlases
+    match /shared_assets/{assetId} {
+      allow get: if isSignedIn() && isValidId(assetId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(assetId)
+        && incoming().id == assetId
+        && isValidSharedAsset(incoming())
+        && incoming().keys().hasAll(['id', 'ownerId', 'name', 'sourceApp', 'mimeType', 'dataUrl', 'width', 'height', 'isAtlas', 'sprites', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['id', 'ownerId', 'name', 'sourceApp', 'mimeType', 'dataUrl', 'width', 'height', 'isAtlas', 'sprites', 'robloxAssetId', 'createdAt', 'updatedAt'])
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(assetId)
+        && existing().ownerId == request.auth.uid
+        && isValidSharedAsset(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'sourceApp', 'mimeType', 'dataUrl', 'width', 'height', 'isAtlas', 'sprites', 'robloxAssetId', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(assetId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Custom Brush Packs
+    match /brush_packs/{packId} {
+      allow get: if isSignedIn() && isValidId(packId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isVerified()
+        && isValidId(packId)
+        && incoming().id == packId
+        && isValidBrushPack(incoming())
+        && incoming().keys().hasAll(['id', 'ownerId', 'name', 'folder', 'formatVersion', 'brushes', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['id', 'ownerId', 'name', 'folder', 'formatVersion', 'brushes', 'createdAt', 'updatedAt'])
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(packId)
+        && existing().ownerId == request.auth.uid
+        && isValidBrushPack(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'folder', 'formatVersion', 'brushes', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(packId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Tutorial Progress
+    match /tutorial_progress/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidTutorialProgress(incoming())
+        && incoming().keys().hasAll(['ownerId', 'completedLessonIds', 'updatedAt'])
+        && incoming().keys().hasOnly(['ownerId', 'completedLessonIds', 'updatedAt'])
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidTutorialProgress(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['completedLessonIds', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(userId) && request.auth.uid == userId;
+    }
+  }
+}
